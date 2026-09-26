@@ -1,5 +1,4 @@
 # Flutter iOS 云打包（不签名）→ 下载 ipa 后用爱思自己的 Apple ID 签名安装
-# 仓库需推到 GitHub；Actions 页手动 Run workflow 或推送触发
 
 name: iOS IPA (unsigned)
 
@@ -30,20 +29,33 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Flutter doctor
+        run: flutter doctor -v
+
       - name: Flutter pub get
         run: flutter pub get
 
       - name: Precache iOS artifacts
         run: flutter precache --ios
 
+      - name: Show Flutter podspec requirement
+        run: |
+          ls -la ios/Flutter || true
+          find "$(dirname "$(which flutter)")/../.." -name "Flutter.podspec" 2>/dev/null | head -5 || true
+          PODSPEC=$(find "$FLUTTER_ROOT" -path "*/bin/cache/artifacts/engine/ios*/Flutter.podspec" 2>/dev/null | head -1)
+          if [ -n "$PODSPEC" ]; then
+            echo "PODSPEC=$PODSPEC"
+            cat "$PODSPEC"
+          fi
+
       - name: Install CocoaPods
         run: |
           cd ios
-          pod install --repo-update
+          pod repo update
+          pod install --verbose
 
       - name: Build iOS (no codesign)
-        run: |
-          flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign
 
       - name: Pack Payload → unsigned.ipa
         run: |
@@ -52,6 +64,7 @@ jobs:
             APP_PATH=$(find build/ios -name "*.app" -type d | head -n 1)
           fi
           echo "Using app: $APP_PATH"
+          rm -rf Payload unsigned.ipa
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           zip -r unsigned.ipa Payload
