@@ -1,0 +1,100 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+// Old plugins (image_gallery_saver@2.0.3) hardcode compileSdkVersion 30; AGP then
+// fails verifyReleaseResources with android:attr/lStar (needs API 31+).
+// Patch their build.gradle in the pub cache before evaluation overwrites our settings.
+def patchOldPluginCompileSdk = {
+    def roots = []
+    def pubCache = System.getenv("PUB_CACHE")
+    if (pubCache) {
+        roots << new File(pubCache)
+    }
+    def localAppData = System.getenv("LOCALAPPDATA")
+    if (localAppData) {
+        roots << new File(localAppData, "Pub/Cache")
+    }
+    def userHome = System.getProperty("user.home")
+    if (userHome) {
+        roots << new File(userHome, ".pub-cache")
+        roots << new File(userHome, "AppData/Local/Pub/Cache")
+    }
+    roots.findAll { it != null && it.exists() }.unique().each { root ->
+        root.eachFileRecurse { f ->
+            if (f.name != "build.gradle") {
+                return
+            }
+            def path = f.path.replace("\\", "/")
+            if (!(path.contains("/image_gallery_saver") || path.contains("/flutter_image_compress"))) {
+                return
+            }
+            if (!path.contains("/android/build.gradle")) {
+                return
+            }
+            def text = f.getText("UTF-8")
+            def patched = text.replaceAll(/compileSdkVersion\s+\d+/, "compileSdkVersion 35")
+            patched = patched.replaceAll(/compileSdk\s*=\s*\d+/, "compileSdk = 35")
+            if (patched != text) {
+                f.write(patched, "UTF-8")
+                println "Patched compileSdk→35: ${f}"
+            }
+        }
+    }
+}
+patchOldPluginCompileSdk()
+
+// AGP 8+ requires namespace; older plugins (e.g. image_gallery_saver) omit it.
+// Also align Java/Kotlin JVM targets so mixed plugins compile.
+subprojects { subproject ->
+    subproject.pluginManager.withPlugin("com.android.library") {
+        def android = subproject.extensions.findByName("android")
+        if (android != null && android.namespace == null) {
+            def manifest = subproject.file("src/main/AndroidManifest.xml")
+            if (manifest.exists()) {
+                def m = new XmlSlurper().parse(manifest)
+                def pkg = m.@package?.toString()
+                if (pkg) {
+                    android.namespace = pkg
+                }
+            }
+            if (android.namespace == null) {
+                android.namespace = "com.flutter.plugins.${subproject.name.replace('-', '_')}"
+            }
+        }
+    }
+
+    def alignJvm = {
+        def android = subproject.extensions.findByName("android")
+        if (android != null) {
+            android.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_1_8
+                targetCompatibility JavaVersion.VERSION_1_8
+            }
+        }
+        subproject.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+            kotlinOptions.jvmTarget = "1.8"
+        }
+    }
+
+    if (subproject.state.executed) {
+        alignJvm()
+    } else {
+        subproject.afterEvaluate { alignJvm() }
+    }
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

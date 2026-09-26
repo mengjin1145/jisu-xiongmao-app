@@ -1,0 +1,29 @@
+# dependencies / build
+**/node_modules/
+**/dist/
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/Pods/
+**/.gradle/
+**/local.properties
+
+# env & secrets
+**/.env
+**/.env.*
+!**/.env.example
+**/dev.db
+**/*.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
