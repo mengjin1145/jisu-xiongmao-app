@@ -33,6 +33,9 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Precache iOS artifacts
+        run: flutter precache --ios
+
       - name: Install CocoaPods
         run: |
           cd ios
